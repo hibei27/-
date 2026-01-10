@@ -1,0 +1,7 @@
+{
+  "name": "星云抽奖系统 (Nebula Lottery)",
+  "description": "高性能现场互动抽奖系统，支持3D大屏展示、手机端签到及后台管理。已完成中文本地化及特效增强。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
