@@ -1,16 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store';
 import { User } from '../types';
 import { Button } from '../components/Button';
-import { Check, Camera, User as UserIcon, Ticket, Phone, List, X, Trophy } from 'lucide-react';
+import { Check, Camera, User as UserIcon, Ticket, Phone, List, X, Trophy, MessageSquare, Send, Gift, Smartphone, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Declare canvas-confetti global type
 declare global {
   interface Window {
     confetti: any;
+    DeviceMotionEvent: any;
   }
 }
+
+// Shake detection hook
+const useShake = (onShake: () => void, enabled: boolean = true) => {
+    const lastTime = useRef(0);
+    const lastX = useRef(0);
+    const lastY = useRef(0);
+    const lastZ = useRef(0);
+    const lastShake = useRef(0);
+
+    useEffect(() => {
+        if (!enabled) return;
+
+        const handleMotion = (e: DeviceMotionEvent) => {
+            const current = e.accelerationIncludingGravity;
+            if (!current) return;
+
+            const currentTime = Date.now();
+            if ((currentTime - lastTime.current) > 100) {
+                const diffTime = currentTime - lastTime.current;
+                lastTime.current = currentTime;
+
+                const x = current.x || 0;
+                const y = current.y || 0;
+                const z = current.z || 0;
+
+                const speed = Math.abs(x + y + z - lastX.current - lastY.current - lastZ.current) / diffTime * 10000;
+
+                if (speed > 1500) { // Threshold
+                    const now = Date.now();
+                    if (now - lastShake.current > 1000) { // Throttle 1s
+                        lastShake.current = now;
+                        onShake();
+                    }
+                }
+
+                lastX.current = x;
+                lastY.current = y;
+                lastZ.current = z;
+            }
+        };
+
+        window.addEventListener('devicemotion', handleMotion);
+        return () => window.removeEventListener('devicemotion', handleMotion);
+    }, [onShake, enabled]);
+};
 
 const WinnersModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
     const { winners } = useStore();
@@ -74,21 +120,143 @@ const WinnersModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
     );
 };
 
+const BarrageModal = ({ isOpen, onClose, user }: { isOpen: boolean, onClose: () => void, user: any }) => {
+    const { sendBarrage } = useStore();
+    const [text, setText] = useState("");
+
+    if (!isOpen) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (text.trim()) {
+            sendBarrage(text.trim(), user);
+            setText("");
+            onClose();
+            // Haptic feedback
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+    };
+
+    return (
+        <AnimatePresence>
+            <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end justify-center p-4 sm:items-center"
+                onClick={onClose}
+            >
+                <motion.div 
+                    initial={{ y: "100%", opacity: 0 }} 
+                    animate={{ y: 0, opacity: 1 }} 
+                    exit={{ y: "100%", opacity: 0 }}
+                    className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl pb-6"
+                    onClick={e => e.stopPropagation()}
+                >
+                     <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <MessageSquare className="w-5 h-5 text-blue-500" />
+                            发送现场弹幕
+                        </h3>
+                        <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-800 text-slate-400">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <form onSubmit={handleSubmit} className="p-4">
+                        <div className="relative">
+                            <input 
+                                autoFocus
+                                value={text}
+                                onChange={e => setText(e.target.value)}
+                                maxLength={30}
+                                placeholder="输入祝福或吐槽..."
+                                className="w-full bg-slate-950 border border-slate-700 rounded-xl py-4 pl-4 pr-12 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">
+                                {text.length}/30
+                            </div>
+                        </div>
+                        <div className="mt-4 flex gap-3">
+                            <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>取消</Button>
+                            <Button type="submit" className="flex-1" disabled={!text.trim()}>
+                                <Send className="w-4 h-4 mr-2" />
+                                发送
+                            </Button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 text-center mt-4">文明发言，弹幕将实时显示在大屏上</p>
+                    </form>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
+    );
+};
+
 const MobileClient = () => {
-  const { addUser, users, currentPrize, winners, triggerInteraction } = useStore();
+  const { addUser, users, currentPrize, winners, triggerInteraction, barrageEnabled } = useStore();
   const [hasJoined, setHasJoined] = useState(false);
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [avatar, setAvatar] = useState(`https://picsum.photos/seed/${Math.random()}/200`);
   const [myCode, setMyCode] = useState('');
   const [showWinners, setShowWinners] = useState(false);
+  const [showBarrage, setShowBarrage] = useState(false);
+  const [shakeEnabled, setShakeEnabled] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Auto-login check (Session Persistence)
+  useEffect(() => {
+    const savedCode = localStorage.getItem('nebula_my_code');
+    if (savedCode) {
+        // Check if the user actually exists in the store (in case admin cleared users)
+        const existingUser = users.find(u => u.code === savedCode);
+        if (existingUser) {
+            setMyCode(savedCode);
+            setName(existingUser.name);
+            setPhoneNumber(existingUser.phoneNumber || '');
+            setAvatar(existingUser.avatar);
+            setHasJoined(true);
+        } else {
+            // User ID exists in local storage but not in DB (cleared), reset local storage
+            localStorage.removeItem('nebula_my_code');
+        }
+    }
+  }, [users]);
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg('');
+
     if (!name || !phoneNumber) return;
 
-    // Simulate backend generating a code
-    const code = Math.floor(10000 + Math.random() * 90000).toString();
+    // 1. Phone Number Validation
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+        setErrorMsg('请输入正确的11位手机号码');
+        // Vibrate to indicate error
+        if (navigator.vibrate) navigator.vibrate(200);
+        return;
+    }
+
+    // 2. Check for duplicate phone number in global list
+    const isDuplicatePhone = users.some(u => u.phoneNumber === phoneNumber);
+    if (isDuplicatePhone) {
+        setErrorMsg('该手机号已签到，请勿重复操作');
+        return;
+    }
+
+    // 3. Check for existing session (One device per user rule)
+    if (localStorage.getItem('nebula_my_code')) {
+        setErrorMsg('当前设备已关联一个签到账号');
+        return;
+    }
+
+    // Generate code
+    let code = Math.floor(10000 + Math.random() * 90000).toString();
+    // Ensure code uniqueness (simple retry)
+    while (users.some(u => u.code === code)) {
+        code = Math.floor(10000 + Math.random() * 90000).toString();
+    }
+
     const newUser: User = {
       id: crypto.randomUUID(),
       name,
@@ -101,19 +269,47 @@ const MobileClient = () => {
     addUser(newUser);
     setMyCode(code);
     setHasJoined(true);
+    
+    // Save session
+    localStorage.setItem('nebula_my_code', code);
+    
+    // Attempt to request permission silently or set state to ask later (iOS 13+)
+    if (typeof (window as any).DeviceMotionEvent !== 'undefined' && typeof (window as any).DeviceMotionEvent.requestPermission === 'function') {
+        // Needs explicit button click later
+        setShakeEnabled(false); 
+    } else {
+        setShakeEnabled(true);
+    }
   };
 
-  const handleInteract = () => {
+  const handleInteract = useCallback(() => {
     if (navigator.vibrate) navigator.vibrate(50);
     triggerInteraction();
     
-    // Create local particles
+    // Create local particles/feedback
     const btn = document.getElementById('interact-btn');
     if (btn) {
-        btn.classList.add('scale-95');
-        setTimeout(() => btn.classList.remove('scale-95'), 100);
+        btn.classList.add('scale-95', 'bg-blue-500');
+        setTimeout(() => btn.classList.remove('scale-95', 'bg-blue-500'), 150);
     }
-  };
+  }, [triggerInteraction]);
+
+  // Enable Shake
+  useShake(handleInteract, shakeEnabled);
+  
+  const enableShake = async () => {
+      if (typeof (window as any).DeviceMotionEvent !== 'undefined' && typeof (window as any).DeviceMotionEvent.requestPermission === 'function') {
+          try {
+              const response = await (window as any).DeviceMotionEvent.requestPermission();
+              if (response === 'granted') {
+                  setShakeEnabled(true);
+                  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+              }
+          } catch (e) {
+              console.error(e);
+          }
+      }
+  }
 
   const isWinner = winners.find(w => w.code === myCode);
 
@@ -138,104 +334,138 @@ const MobileClient = () => {
     }
   }, [isWinner]);
 
-  if (hasJoined) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white p-6 flex flex-col items-center justify-between relative overflow-hidden">
-        {/* Background Gradients */}
+  // Background Component to avoid layout shifts and scrolling issues
+  const Background = () => (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-blue-600/10 rounded-full blur-[100px]" />
         <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-purple-600/10 rounded-full blur-[100px]" />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+    </div>
+  );
+  
+  // Current user object helper
+  const currentUser = users.find(u => u.code === myCode) || { name, avatar, code: myCode };
+
+  if (hasJoined) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white relative flex flex-col">
+        <Background />
         
-        {/* Header Actions */}
-        <div className="absolute top-6 right-6 z-20">
-            <button 
-                onClick={() => setShowWinners(true)}
-                className="bg-slate-800/50 backdrop-blur-md p-3 rounded-full border border-slate-700 shadow-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-                <List className="w-6 h-6" />
-            </button>
-        </div>
-
-        <div className="w-full max-w-md z-10 text-center space-y-8 mt-12 flex-1 flex flex-col justify-center">
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="flex flex-col items-center"
-          >
-            <div className="relative group mb-6">
-              <div className="absolute inset-0 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full blur opacity-60 group-hover:opacity-80 transition-opacity duration-500"></div>
-              <img src={avatar} alt="Me" className="relative w-32 h-32 rounded-full border-4 border-slate-900 shadow-2xl object-cover z-10" />
-              <div className="absolute bottom-0 right-0 z-20 bg-green-500 rounded-full p-1.5 border-4 border-slate-950 shadow-sm">
-                <Check className="w-5 h-5 text-white" />
-              </div>
-            </div>
-            
-            <h2 className="text-3xl font-bold tracking-tight">{name}</h2>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 mt-2 text-xs text-slate-400">
-                <span>{phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}</span>
-                <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
-                <span className="text-green-400">已签到</span>
-            </div>
-            
-            <div className="mt-10 bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 rounded-3xl p-8 w-full shadow-2xl relative overflow-hidden group">
-               <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"></div>
-               <div className="absolute -right-6 -top-6 text-slate-800 opacity-20 transform rotate-12 group-hover:rotate-0 transition-transform duration-500">
-                 <Ticket className="w-40 h-40" />
-               </div>
-               
-               <p className="text-blue-400 text-xs uppercase tracking-[0.2em] font-bold mb-3 relative z-10">Lottery Number</p>
-               <div className="text-7xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-blue-200 tracking-widest drop-shadow-2xl relative z-10">
-                 {myCode}
-               </div>
-               <div className="mt-4 flex justify-center">
-                   <div className="h-1 w-12 bg-blue-500 rounded-full opacity-50"></div>
-               </div>
-            </div>
-          </motion.div>
-
-          {isWinner ? (
-             <motion.div 
-              initial={{ scale: 0.8, opacity: 0, y: 50 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-yellow-500 to-orange-600 p-8 rounded-3xl shadow-[0_20px_50px_rgba(234,179,8,0.3)] border border-yellow-400/30 relative overflow-hidden mt-8"
-             >
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
-                <div className="relative z-10">
-                  <h3 className="text-2xl font-black text-white mb-2 tracking-tight uppercase italic">Big Winner!</h3>
-                  <div className="h-px w-full bg-white/30 my-4"></div>
-                  <p className="text-yellow-100 font-bold text-sm mb-1 uppercase tracking-wider">You Won</p>
-                  <p className="text-2xl font-bold text-white leading-tight">{currentPrize.name}</p>
+        {/* Header */}
+        <div className="p-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50 backdrop-blur-md sticky top-0 z-30">
+            <div className="flex items-center gap-3">
+                <img src={avatar} className="w-10 h-10 rounded-full border border-slate-600" />
+                <div>
+                    <h2 className="font-bold text-sm leading-tight">{name}</h2>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-wider">{myCode}</p>
                 </div>
-             </motion.div>
-          ) : (
-             <div className="w-full mt-8">
-                <Button 
-                    id="interact-btn" 
-                    onClick={handleInteract} 
-                    className="w-full py-5 text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-900/40 rounded-2xl border border-blue-400/20 active:scale-95 transition-all relative overflow-hidden group"
+            </div>
+            <div className="flex gap-2">
+                {barrageEnabled && (
+                    <button 
+                        onClick={() => setShowBarrage(true)}
+                        className="p-2.5 rounded-full bg-slate-800 border border-slate-700 text-blue-400 hover:bg-slate-700 transition-colors"
+                    >
+                        <MessageSquare className="w-5 h-5" />
+                    </button>
+                )}
+                <button 
+                    onClick={() => setShowWinners(true)}
+                    className="p-2.5 rounded-full bg-slate-800 border border-slate-700 text-yellow-500 hover:bg-slate-700 transition-colors"
                 >
-                   <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                   <div className="relative flex items-center justify-center gap-2">
-                       <span>👋</span> 
-                       <span>向大屏招手</span>
-                   </div>
-                </Button>
-                <p className="text-slate-500 text-xs mt-4 animate-pulse">大屏正在寻找幸运儿...</p>
-             </div>
-          )}
+                    <Trophy className="w-5 h-5" />
+                </button>
+            </div>
         </div>
 
-        <div className="text-slate-700 text-[10px] z-10 font-mono mt-8 uppercase tracking-widest">Nebula System ID: {myCode}</div>
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto pb-safe">
+            {/* Prize Card */}
+            <div className="mb-6">
+                <div className="flex items-center gap-2 mb-2 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    <Gift className="w-3 h-3" /> 当前奖品
+                </div>
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 border border-slate-700 shadow-xl flex gap-4 items-center">
+                    <img src={currentPrize.image} className="w-16 h-16 rounded-xl bg-slate-950 object-cover border border-slate-600" />
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-bold truncate">{currentPrize.name}</h3>
+                        <p className="text-sm text-slate-400 mt-1">剩余数量: <span className="text-blue-400 font-mono font-bold">{currentPrize.count}</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center items-center">
+              {isWinner ? (
+                 <motion.div 
+                  initial={{ scale: 0.8, opacity: 0, y: 50 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  className="w-full bg-gradient-to-br from-yellow-500 to-orange-600 p-8 rounded-3xl shadow-[0_20px_50px_rgba(234,179,8,0.3)] border border-yellow-400/30 relative overflow-hidden"
+                 >
+                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+                    <div className="relative z-10 text-center">
+                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                        <Trophy className="w-8 h-8 text-white" />
+                      </div>
+                      <h3 className="text-3xl font-black text-white mb-2 tracking-tight uppercase italic">Big Winner!</h3>
+                      <p className="text-yellow-100 font-bold text-sm mb-4 uppercase tracking-wider">You Won</p>
+                      <p className="text-2xl font-bold text-white leading-tight">{currentPrize.name}</p>
+                    </div>
+                 </motion.div>
+              ) : (
+                 <div className="w-full max-w-sm">
+                    {/* Interaction Button */}
+                    <div className="relative group">
+                         {/* Ripple Effects */}
+                        <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-xl group-active:scale-110 transition-transform duration-300"></div>
+                        <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse"></div>
+                        
+                        <button 
+                            id="interact-btn" 
+                            onClick={() => {
+                                handleInteract();
+                                if(!shakeEnabled) enableShake();
+                            }} 
+                            className="relative w-full aspect-square rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-700 shadow-2xl flex flex-col items-center justify-center gap-4 transition-all active:scale-95 active:border-blue-500 group overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500/10 to-transparent opacity-50"></div>
+                            
+                            <Smartphone className={`w-16 h-16 text-slate-400 transition-all duration-300 ${shakeEnabled ? 'animate-wiggle' : 'group-hover:scale-110 group-active:text-blue-400'}`} />
+                            
+                            <div className="text-center z-10">
+                                <p className="text-xl font-bold text-white">{shakeEnabled ? "摇一摇!" : "点我互动"}</p>
+                                <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider">{shakeEnabled ? "Shake Device" : "Tap to wave"}</p>
+                            </div>
+                        </button>
+                    </div>
+                    
+                    {!shakeEnabled && (
+                        <p className="text-center text-xs text-slate-500 mt-6">
+                            提示: 点击按钮并允许权限即可启用“摇一摇”功能
+                        </p>
+                    )}
+                 </div>
+              )}
+            </div>
+
+            <div className="mt-6 text-center">
+                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-slate-800">
+                    <Ticket className="w-4 h-4 text-slate-500" />
+                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Lottery Code</span>
+                    <span className="text-blue-400 font-mono font-bold text-lg">{myCode}</span>
+                 </div>
+            </div>
+        </div>
         
         <WinnersModal isOpen={showWinners} onClose={() => setShowWinners(false)} />
+        <BarrageModal isOpen={showBarrage} onClose={() => setShowBarrage(false)} user={currentUser} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+      <Background />
       
-      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl relative z-10">
+      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl relative z-10 my-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-display font-black text-white mb-2 tracking-tighter">签到 <span className="text-blue-500">.ING</span></h1>
           <p className="text-slate-400 text-sm">Join the Nebula Interactive Event</p>
@@ -260,7 +490,7 @@ const MobileClient = () => {
               <input 
                 type="text" 
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { setName(e.target.value); setErrorMsg(''); }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
                 placeholder="请输入您的姓名"
                 required
@@ -275,13 +505,21 @@ const MobileClient = () => {
               <input 
                 type="tel" 
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(e) => { setPhoneNumber(e.target.value); setErrorMsg(''); }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
-                placeholder="请输入手机号"
+                placeholder="请输入11位手机号"
                 required
+                maxLength={11}
               />
             </div>
           </div>
+          
+          {errorMsg && (
+              <div className="flex items-center gap-2 text-red-500 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/20 animate-in fade-in slide-in-from-top-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+              </div>
+          )}
 
           <Button type="submit" className="w-full py-4 text-lg font-bold shadow-lg shadow-blue-500/20 rounded-xl mt-4">
             立即签到入场

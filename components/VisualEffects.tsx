@@ -1,14 +1,7 @@
 import React, { useRef, useMemo, useState } from 'react';
-import { useFrame, ThreeElements } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
-
-// Extend JSX.IntrinsicElements to include R3F elements
-declare global {
-  namespace JSX {
-    interface IntrinsicElements extends ThreeElements {}
-  }
-}
 
 // --- Fireworks Effect ---
 const FIREWORK_PARTICLES = 100;

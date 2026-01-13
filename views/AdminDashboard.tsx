@@ -1,25 +1,207 @@
+
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { Button } from '../components/Button';
-import { Users, Trophy, Play, Square, Settings, RefreshCw, Wand2, LogOut, Edit, Save, Crown, AlertTriangle, Shield, Eye, EyeOff, Plus, Trash2, Download, Search, CheckCircle, Volume2 } from 'lucide-react';
+import { Users, Trophy, Play, Square, Settings, RefreshCw, Wand2, LogOut, Edit, Save, Crown, AlertTriangle, Shield, Eye, EyeOff, Plus, Trash2, Download, Search, CheckCircle, Volume2, Globe, Activity, LayoutGrid, MessageSquare, ChevronLeft, ChevronRight, UserPlus, XCircle, Palette, Lock, Key, X } from 'lucide-react';
 import { generateCongratulatorySpeech, speakText } from '../services/geminiService';
-import { Prize } from '../types';
+import { Prize, AppTheme } from '../types';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Components for Auth ---
+
+const LoginScreen = () => {
+    const login = useStore(s => s.login);
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState(false);
+
+    const handleLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (login(password)) {
+            setError(false);
+        } else {
+            setError(true);
+        }
+    };
+
+    return (
+        <div className="h-screen w-full bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
+             {/* Background Effects */}
+             <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-blue-600/10 rounded-full blur-[100px]" />
+             <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-purple-600/10 rounded-full blur-[100px]" />
+             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+
+             <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="w-full max-w-md bg-slate-900/80 backdrop-blur-xl border border-slate-800 p-8 rounded-3xl shadow-2xl relative z-10"
+             >
+                 <div className="text-center mb-8">
+                     <div className="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/30">
+                         <Lock className="w-8 h-8 text-blue-400" />
+                     </div>
+                     <h1 className="text-2xl font-bold text-white mb-2">管理员登录</h1>
+                     <p className="text-slate-400 text-sm">请输入访问密码</p>
+                 </div>
+
+                 <form onSubmit={handleLogin} className="space-y-4">
+                     <div className="space-y-2">
+                         <div className="relative group">
+                             <Key className="absolute left-3 top-3.5 w-5 h-5 text-slate-500 group-focus-within:text-blue-500 transition-colors" />
+                             <input 
+                                 type="password" 
+                                 autoFocus
+                                 value={password}
+                                 onChange={(e) => { setPassword(e.target.value); setError(false); }}
+                                 className={`w-full bg-slate-950 border rounded-xl py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all placeholder-slate-600 ${error ? 'border-red-500 shake' : 'border-slate-800'}`}
+                                 placeholder="请输入密码"
+                             />
+                         </div>
+                         {error && <p className="text-red-500 text-xs ml-1">密码错误，请重试</p>}
+                     </div>
+
+                     <Button type="submit" className="w-full py-3 text-lg font-bold shadow-lg shadow-blue-500/20 rounded-xl">
+                         登录后台
+                     </Button>
+                 </form>
+             </motion.div>
+        </div>
+    );
+};
+
+const ChangePasswordModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+    const changePassword = useStore(s => s.changePassword);
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError("");
+
+        if (newPassword.length < 4) {
+            setError("密码长度至少需4位");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setError("两次输入的密码不一致");
+            return;
+        }
+
+        changePassword(newPassword);
+        setSuccess(true);
+        setTimeout(() => {
+            setSuccess(false);
+            setNewPassword("");
+            setConfirmPassword("");
+            onClose();
+        }, 1500);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-blue-600" />
+                        修改管理员密码
+                    </h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {success ? (
+                    <div className="text-center py-8 text-green-600">
+                        <CheckCircle className="w-12 h-12 mx-auto mb-2" />
+                        <p className="font-bold">密码修改成功</p>
+                    </div>
+                ) : (
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">新密码</label>
+                            <input 
+                                type="password" 
+                                value={newPassword}
+                                onChange={e => setNewPassword(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                placeholder="输入新密码"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1">确认新密码</label>
+                            <input 
+                                type="password" 
+                                value={confirmPassword}
+                                onChange={e => setConfirmPassword(e.target.value)}
+                                className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                placeholder="再次输入新密码"
+                            />
+                        </div>
+                        
+                        {error && (
+                            <div className="text-red-500 text-xs flex items-center gap-1 bg-red-50 p-2 rounded">
+                                <AlertTriangle className="w-3 h-3" /> {error}
+                            </div>
+                        )}
+
+                        <div className="pt-2">
+                            <Button type="submit" className="w-full">确认修改</Button>
+                        </div>
+                    </form>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const AdminDashboard = () => {
-  const { users, winners, status, currentPrize, prizes, setStatus, drawWinner, resetLottery, removeUser, updatePrize, presetWinnerId, setPresetWinner, selectPrize, addPrize, deletePrize } = useStore();
+  const store = useStore();
+  const { users, winners, status, currentPrize, prizes, setStatus, drawWinner, revealWinner, resetLottery, removeUser, updatePrize, presetWinnerId, setPresetWinner, selectPrize, addPrize, deletePrize, displayMode, setDisplayMode, barrageEnabled, setBarrageEnabled, generateMockUsers, clearAllUsers, theme, setTheme, isAuthenticated, logout } = store;
+  
   const [speech, setSpeech] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEditingPrize, setIsEditingPrize] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false); // Toggle for "God Mode"
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   
-  // Local state for editing current prize
-  const [tempPrizeName, setTempPrizeName] = useState(currentPrize.name);
-  const [tempPrizeImage, setTempPrizeImage] = useState(currentPrize.image);
+  // Safe initialization even if currentPrize is missing
+  const [tempPrizeName, setTempPrizeName] = useState(currentPrize?.name || "");
+  const [tempPrizeImage, setTempPrizeImage] = useState(currentPrize?.image || "");
+
+  // Update temp state when currentPrize changes
+  useEffect(() => {
+      if (currentPrize) {
+          setTempPrizeName(currentPrize.name);
+          setTempPrizeImage(currentPrize.image);
+      }
+  }, [currentPrize]);
 
   // New prize form
   const [newPrizeName, setNewPrizeName] = useState("");
   const [showAddPrize, setShowAddPrize] = useState(false);
+
+  // --- Auth Check ---
+  if (!isAuthenticated) {
+      return <LoginScreen />;
+  }
+  
+  // Safety check for corrupt state
+  if (!currentPrize) {
+      return (
+          <div className="h-screen flex items-center justify-center flex-col gap-4 text-slate-800">
+              <AlertTriangle className="w-12 h-12 text-red-500" />
+              <h2 className="text-xl font-bold">数据状态异常</h2>
+              <Button onClick={() => window.location.reload()}>刷新页面</Button>
+              <Button variant="danger" onClick={() => { localStorage.clear(); window.location.reload(); }}>重置所有数据</Button>
+          </div>
+      )
+  }
 
   const handleStartDraw = () => {
     setSpeech(""); // Clear previous speech
@@ -27,30 +209,15 @@ const AdminDashboard = () => {
   };
 
   const handleStopDraw = async () => {
-    setStatus('idle'); // Intermediate state if needed
+    // 1. Determine winner and switch to 'exploded' state (Tension)
+    drawWinner();
+    
+    // 2. Wait for explosion/convergence animation (e.g., 2 seconds)
     setTimeout(() => {
-        drawWinner();
-    }, 500);
+        // 3. Reveal the winner
+        revealWinner();
+    }, 2000);
   };
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-        // Only trigger if not typing in an input
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-        if (e.code === 'Space') {
-            e.preventDefault(); // Prevent scrolling
-            if (status === 'idle' || status === 'winner-revealed') {
-                handleStartDraw();
-            } else if (status === 'rolling') {
-                handleStopDraw();
-            }
-        }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status]); // Re-bind when status changes
 
   const handleGenerateSpeech = async () => {
     if (winners.length === 0) return;
@@ -108,50 +275,153 @@ const AdminDashboard = () => {
     (u.phoneNumber && u.phoneNumber.includes(searchTerm))
   );
 
+  const ThemeButton = ({ id, color, label }: { id: AppTheme, color: string, label: string }) => (
+      <button 
+        onClick={() => setTheme(id)} 
+        className={`w-full p-2 rounded-lg flex items-center gap-2 transition-all ${theme === id ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+        title={label}
+      >
+          <div className={`w-3 h-3 rounded-full ${color}`}></div>
+          {!isSidebarCollapsed && <span className="text-xs font-bold">{label}</span>}
+      </button>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex font-sans">
+    <div className="h-screen overflow-hidden bg-slate-100 text-slate-900 flex font-sans">
+      <ChangePasswordModal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
+
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 fixed h-full z-10">
-        <div className="p-6 border-b border-slate-800">
-          <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <span className="text-blue-500">❖</span> 星云后台
-          </h2>
+      <aside 
+        className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-white flex flex-col shrink-0 h-full z-10 transition-all duration-300 ease-in-out relative`}
+      >
+        <div className={`p-6 border-b border-slate-800 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isSidebarCollapsed && (
+              <h2 className="text-xl font-bold tracking-tight flex items-center gap-2 whitespace-nowrap overflow-hidden">
+                <span className="text-blue-500">❖</span> 星云后台
+              </h2>
+          )}
+          {isSidebarCollapsed && <span className="text-blue-500 font-bold text-2xl">❖</span>}
+          
+          <button 
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className={`text-slate-500 hover:text-white transition-colors ${isSidebarCollapsed ? 'absolute -right-3 top-8 bg-slate-800 rounded-full p-1 border border-slate-700 shadow-md z-50' : ''}`}
+            title={isSidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          >
+            {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <div className="flex items-center p-3 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-900/50 font-medium">
-            <Trophy className="w-5 h-5 mr-3" />
-            抽奖控制台
+
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700">
+          <div className={`flex items-center p-3 rounded-lg font-medium transition-all ${isSidebarCollapsed ? 'justify-center bg-blue-600/20 text-blue-400' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'}`} title="抽奖控制台">
+            <Trophy className={`w-5 h-5 ${isSidebarCollapsed ? '' : 'mr-3'}`} />
+            {!isSidebarCollapsed && "抽奖控制台"}
           </div>
-          <div className="flex items-center p-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg cursor-pointer transition-colors">
-            <Users className="w-5 h-5 mr-3" />
-            用户列表 ({users.length})
+          <div className={`flex items-center p-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg cursor-pointer transition-all ${isSidebarCollapsed ? 'justify-center' : ''}`} title="用户列表">
+            <Users className={`w-5 h-5 ${isSidebarCollapsed ? '' : 'mr-3'}`} />
+            {!isSidebarCollapsed && `用户列表 (${users.length})`}
           </div>
           
+          <div className="pt-6 pb-2">
+              {!isSidebarCollapsed && <h3 className="text-xs font-bold text-slate-500 uppercase px-3 mb-3 whitespace-nowrap">大屏视图模式</h3>}
+              <div className={`grid gap-2 ${isSidebarCollapsed ? 'grid-cols-1 px-0' : 'grid-cols-3 px-3'}`}>
+                 <button 
+                    onClick={() => setDisplayMode('sphere')} 
+                    className={`p-2 rounded-xl flex flex-col items-center gap-1.5 transition-all ${displayMode === 'sphere' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                    title="球体模式"
+                 >
+                    <Globe className="w-5 h-5" /> 
+                    {!isSidebarCollapsed && <span className="text-[10px] font-bold">星球</span>}
+                 </button>
+                 <button 
+                    onClick={() => setDisplayMode('helix')} 
+                    className={`p-2 rounded-xl flex flex-col items-center gap-1.5 transition-all ${displayMode === 'helix' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                    title="螺旋模式"
+                 >
+                    <Activity className="w-5 h-5" /> 
+                    {!isSidebarCollapsed && <span className="text-[10px] font-bold">螺旋</span>}
+                 </button>
+                 <button 
+                    onClick={() => setDisplayMode('grid')} 
+                    className={`p-2 rounded-xl flex flex-col items-center gap-1.5 transition-all ${displayMode === 'grid' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                    title="网格模式"
+                 >
+                    <LayoutGrid className="w-5 h-5" /> 
+                    {!isSidebarCollapsed && <span className="text-[10px] font-bold">网格</span>}
+                 </button>
+              </div>
+          </div>
+          
+          <div className="pt-6 pb-2">
+              {!isSidebarCollapsed && <h3 className="text-xs font-bold text-slate-500 uppercase px-3 mb-3 whitespace-nowrap">视觉主题</h3>}
+              <div className={`space-y-1 ${isSidebarCollapsed ? 'px-0' : 'px-3'}`}>
+                  <ThemeButton id="nebula" color="bg-blue-500" label="赛博星云" />
+                  <ThemeButton id="festive" color="bg-red-500" label="新春庆典" />
+                  <ThemeButton id="luxury" color="bg-yellow-500" label="黑金奢华" />
+              </div>
+          </div>
+          
+          {/* Feature Toggles */}
+          <div className="pt-6 pb-2">
+              {!isSidebarCollapsed && <h3 className="text-xs font-bold text-slate-500 uppercase px-3 mb-3 whitespace-nowrap">现场功能开关</h3>}
+              <div className={`flex rounded-lg bg-slate-800/50 border border-slate-800 transition-all ${isSidebarCollapsed ? 'flex-col items-center p-2 gap-2 mx-0' : 'items-center justify-between p-3 mx-3'}`}>
+                    <div className={`flex items-center text-slate-300 ${isSidebarCollapsed ? 'justify-center' : ''}`} title="现场弹幕">
+                        <MessageSquare className={`w-5 h-5 ${isSidebarCollapsed ? '' : 'mr-3'}`} />
+                        {!isSidebarCollapsed && <span className="text-sm">现场弹幕</span>}
+                    </div>
+                    {/* Toggle Switch */}
+                    <button 
+                        onClick={() => setBarrageEnabled(!barrageEnabled)}
+                        className={`rounded-full relative transition-colors duration-300 focus:outline-none ${isSidebarCollapsed ? 'w-8 h-4' : 'w-10 h-5'} ${barrageEnabled ? 'bg-green-500' : 'bg-slate-600'}`}
+                        title={barrageEnabled ? "关闭弹幕" : "开启弹幕"}
+                    >
+                        <div className={`absolute top-0.5 left-0.5 bg-white rounded-full shadow-sm transition-transform duration-300 ${isSidebarCollapsed ? 'w-3 h-3' : 'w-4 h-4'} ${barrageEnabled ? (isSidebarCollapsed ? 'translate-x-4' : 'translate-x-5') : 'translate-x-0'}`} />
+                    </button>
+              </div>
+          </div>
+
           {/* Advanced Mode Toggle */}
           <div 
              onClick={() => setShowAdvanced(!showAdvanced)}
-             className={`flex items-center p-3 rounded-lg cursor-pointer transition-all mt-8 border ${showAdvanced ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+             className={`flex items-center p-3 rounded-lg cursor-pointer transition-all mt-4 border ${isSidebarCollapsed ? 'justify-center mx-0' : 'mx-3'} ${showAdvanced ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+             title="内定控制模式"
           >
-            {showAdvanced ? <Eye className="w-5 h-5 mr-3" /> : <EyeOff className="w-5 h-5 mr-3" />}
-            <span>内定控制模式</span>
+            {showAdvanced ? <Eye className={`w-5 h-5 ${isSidebarCollapsed ? '' : 'mr-3'}`} /> : <EyeOff className={`w-5 h-5 ${isSidebarCollapsed ? '' : 'mr-3'}`} />}
+            {!isSidebarCollapsed && <span className="text-sm">内定控制模式</span>}
           </div>
         </nav>
-        <div className="p-4 border-t border-slate-800 text-slate-500 text-xs text-center absolute bottom-0 w-full">
-            Nebula System v1.0
+        
+        {/* Footer Actions */}
+        <div className="p-4 border-t border-slate-800 space-y-2">
+             <button 
+                onClick={() => setShowPasswordModal(true)}
+                className={`flex items-center p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 w-full transition-colors ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                title="修改密码"
+             >
+                 <Settings className="w-5 h-5" />
+                 {!isSidebarCollapsed && <span className="ml-3 text-sm">修改密码</span>}
+             </button>
+             <button 
+                onClick={logout}
+                className={`flex items-center p-2 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 w-full transition-colors ${isSidebarCollapsed ? 'justify-center' : ''}`}
+                title="退出登录"
+             >
+                 <LogOut className="w-5 h-5" />
+                 {!isSidebarCollapsed && <span className="ml-3 text-sm">退出登录</span>}
+             </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto ml-64 pb-32">
+      <main className="flex-1 p-8 overflow-y-auto relative pb-32 transition-all duration-300">
         <header className="flex justify-between items-center mb-8">
           <div>
               <h1 className="text-3xl font-bold text-slate-800">活动现场控制</h1>
               <p className="text-slate-500 mt-1">管理抽奖流程与监控数据</p>
           </div>
           <div className="flex gap-2">
-            <span className={`px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 ${status === 'rolling' ? 'bg-green-100 text-green-700 animate-pulse' : 'bg-slate-200 text-slate-600'}`}>
-              <div className={`w-2 h-2 rounded-full ${status === 'rolling' ? 'bg-green-500' : 'bg-slate-400'}`}></div>
-              状态: {status === 'idle' ? '待机中' : status === 'rolling' ? '抽奖进行中' : status === 'winner-revealed' ? '中奖展示' : status}
+            <span className={`px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 ${status === 'rolling' ? 'bg-green-100 text-green-700 animate-pulse' : status === 'exploded' ? 'bg-purple-100 text-purple-700 animate-pulse' : 'bg-slate-200 text-slate-600'}`}>
+              <div className={`w-2 h-2 rounded-full ${status === 'rolling' ? 'bg-green-500' : status === 'exploded' ? 'bg-purple-500' : 'bg-slate-400'}`}></div>
+              状态: {status === 'idle' ? '待机中' : status === 'rolling' ? '抽奖进行中' : status === 'exploded' ? '聚变中' : status === 'winner-revealed' ? '中奖展示' : status}
             </span>
           </div>
         </header>
@@ -337,9 +607,33 @@ const AdminDashboard = () => {
             </div>
             
             {showAdvanced && (
-                <div className="mb-4 text-xs bg-amber-100 text-amber-700 px-3 py-2 rounded-lg border border-amber-200 flex items-center gap-2">
-                    <Shield className="w-3 h-3" /> 
-                    <strong>高级模式:</strong> 您已启用内定功能，请谨慎操作。
+                <div className="mb-4 text-xs bg-amber-100 text-amber-700 px-3 py-2 rounded-lg border border-amber-200 flex flex-col md:flex-row items-start md:items-center gap-4 justify-between">
+                    <div className="flex items-center gap-2">
+                        <Shield className="w-3 h-3" /> 
+                        <strong>高级模式:</strong> 您已启用开发者功能。
+                    </div>
+                    <div className="flex gap-2">
+                        <Button 
+                            size="sm" 
+                            className="bg-amber-600 hover:bg-amber-700 border-transparent text-white shadow-none text-xs h-8"
+                            onClick={() => generateMockUsers(50)}
+                        >
+                            <UserPlus className="w-3 h-3 mr-1" />
+                            +50 虚拟用户
+                        </Button>
+                        <Button 
+                            size="sm" 
+                            className="bg-red-600 hover:bg-red-700 border-transparent text-white shadow-none text-xs h-8"
+                            onClick={() => {
+                                if(confirm("确定要清空所有用户数据吗？此操作不可恢复。")) {
+                                    clearAllUsers();
+                                }
+                            }}
+                        >
+                            <XCircle className="w-3 h-3 mr-1" />
+                            清空用户
+                        </Button>
+                    </div>
                 </div>
             )}
             
@@ -417,7 +711,10 @@ const AdminDashboard = () => {
         </div>
 
         {/* Sticky Action Footer */}
-        <div className="fixed bottom-0 left-64 right-0 p-4 bg-white border-t border-slate-200 flex justify-between items-center z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
+        <div 
+          className="fixed bottom-0 right-0 p-4 bg-white border-t border-slate-200 flex justify-between items-center z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] transition-all duration-300 ease-in-out"
+          style={{ left: isSidebarCollapsed ? '5rem' : '16rem' }}
+        >
              <div className="flex items-center gap-4">
                  <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-mono text-slate-500">
                      <span className="bg-white border border-slate-300 rounded px-1.5 py-0.5 font-bold">SPACE</span>
@@ -444,9 +741,9 @@ const AdminDashboard = () => {
                     开始滚动
                   </Button>
                 ) : (
-                  <Button onClick={handleStopDraw} variant="danger" size="lg" className="w-64 animate-pulse shadow-red-500/25">
+                  <Button onClick={handleStopDraw} variant="danger" size="lg" className={`w-64 shadow-red-500/25 ${status === 'rolling' ? 'animate-pulse' : 'opacity-50 cursor-wait'}`} disabled={status === 'exploded'}>
                     <Square className="w-5 h-5 mr-2 fill-current" />
-                    停止并开奖
+                    {status === 'exploded' ? '聚变中...' : '停止并开奖'}
                   </Button>
                 )}
              </div>
@@ -455,23 +752,5 @@ const AdminDashboard = () => {
     </div>
   );
 };
-
-// Simple X icon helper for inline usage
-const X = (props: any) => (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      {...props}
-    >
-      <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-    </svg>
-)
 
 export default AdminDashboard;
